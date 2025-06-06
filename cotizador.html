@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cotizador de Paquetería</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #fff;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      border: 2px solid #c00;
+      border-radius: 10px;
+      background-color: #fff0f0;
+    }
+    h1 {
+      color: #c00;
+      text-align: center;
+    }
+    h2 {
+      color: #c00;
+      text-align: center;
+      font-size: 1em;
+      margin-top: -10px;
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      font-size: 1em;
+    }
+    .result {
+      margin-top: 20px;
+      font-size: 1.2em;
+      font-weight: bold;
+      color: #c00;
+    }
+    .detalle {
+      margin-top: 10px;
+      font-size: 1em;
+      color: #333;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #c00;
+      color: white;
+      border: none;
+      font-size: 1em;
+      width: 48%;
+      cursor: pointer;
+      border-radius: 5px;
+      display: inline-block;
+    }
+    button:hover {
+      background-color: #a00;
+    }
+    .buttons-container {
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="cotizacion">
+    <h1>Cotizador de Paquetería</h1>
+    <h2>GyL Liberia</h2>
+    <label for="libras">Peso en libras (lbs):</label>
+    <input
+      type="number"
+      id="libras"
+      placeholder="Ingrese el peso en libras"
+      oninput="convertirDesdeLibras()"
+    />
+
+    <label for="kilos">Peso en kilogramos (kg):</label>
+    <input
+      type="number"
+      id="kilos"
+      placeholder="Ingrese el peso en kilogramos"
+      oninput="convertirDesdeKilos()"
+    />
+
+    <div class="result" id="costo"></div>
+    <div class="detalle" id="detalleTarifa"></div>
+    <div class="result" id="colones"></div>
+
+    <button onclick="cotizar()">Calcular costo</button>
+
+    <div class="buttons-container">
+      <button onclick="imprimirCotizacion()">Imprimir Cotización</button>
+      <button onclick="guardarComoPDF()">Guardar como PDF</button>
+      <button onclick="guardarComoImagen()">Guardar como Imagen</button>
+    </div>
+  </div>
+
+  <!-- Librerías para PDF y captura -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <script>
+    function convertirDesdeLibras() {
+      const lbs = parseFloat(document.getElementById("libras").value);
+      if (!isNaN(lbs)) {
+        const kg = lbs * 0.453592;
+        document.getElementById("kilos").value = kg.toFixed(2);
+      }
+    }
+
+    function convertirDesdeKilos() {
+      const kg = parseFloat(document.getElementById("kilos").value);
+      if (!isNaN(kg)) {
+        const lbs = kg / 0.453592;
+        document.getElementById("libras").value = lbs.toFixed(2);
+      }
+    }
+
+    async function obtenerTipoCambio() {
+      try {
+        const response = await fetch("https://api.hacienda.go.cr/indicadores/tc/dolar");
+        const data = await response.json();
+        return parseFloat(data.venta.valor);
+      } catch (error) {
+        alert("No se pudo obtener el tipo de cambio. Se usará un valor aproximado de ₡512.02");
+        return 512.02;
+      }
+    }
+
+    async function cotizar() {
+      let kg = parseFloat(document.getElementById("kilos").value);
+      if (isNaN(kg) || kg <= 0) {
+        alert("Ingrese un peso válido en kilogramos o libras");
+        return;
+      }
+
+      const kgRedondeado = Math.ceil(kg);
+
+      let tarifa = 15;
+      let detalle = "Tarifa aplicada: $15 por kg (hasta 25 kg)";
+
+      if (kgRedondeado > 100) {
+        tarifa = 12.5;
+        detalle = "Tarifa aplicada: $12.5 por kg (más de 100 kg)";
+      } else if (kgRedondeado > 45) {
+        tarifa = 13;
+        detalle = "Tarifa aplicada: $13 por kg (de 45.01 a 100 kg)";
+      } else if (kgRedondeado > 25) {
+        tarifa = 13.5;
+        detalle = "Tarifa aplicada: $13.5 por kg (de 25.01 a 45 kg)";
+      }
+
+      const costoUSD = tarifa * kgRedondeado;
+      document.getElementById("costo").innerText = `Costo: $${costoUSD.toFixed(2)} USD`;
+      document.getElementById("detalleTarifa").innerText = `${detalle} - Peso redondeado: ${kgRedondeado} kg`;
+
+      const tipoCambio = await obtenerTipoCambio();
+      const costoCRC = costoUSD * tipoCambio;
+      document.getElementById("colones").innerText = `Costo aproximado: ₡${costoCRC.toFixed(2)} CRC`;
+    }
+
+    function imprimirCotizacion() {
+      window.print();
+    }
+
+    async function guardarComoPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      const cotizacion = document.getElementById("cotizacion");
+
+      // Captura la zona como canvas usando html2canvas y agrega imagen al PDF
+      const canvas = await html2canvas(cotizacion);
+      const imgData = canvas.toDataURL("image/png");
+      const imgProps = doc.getImageProperties(imgData);
+      const pdfWidth = doc.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      doc.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      doc.save("Cotizacion_GyL_Liberia.pdf");
+    }
+
+    async function guardarComoImagen() {
+      const cotizacion = document.getElementById("cotizacion");
+      const canvas = await html2canvas(cotizacion);
+      const imgData = canvas.toDataURL("image/png");
+
+      const link = document.createElement("a");
+      link.href = imgData;
+      link.download = "Cotizacion_GyL_Liberia.png";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+</body>
+</html>
